@@ -1,4 +1,4 @@
-package com.akash.voyage.model;
+package com.akash.voyage.dto;
 
 import lombok.Getter;
 import lombok.Setter;

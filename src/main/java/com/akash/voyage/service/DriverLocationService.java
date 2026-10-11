@@ -1,13 +1,13 @@
 package com.akash.voyage.service;
 
-import com.akash.voyage.model.NearestDriverResponse;
+import com.akash.voyage.dto.NearestDriverResponse;
 import org.springframework.data.geo.*;
 import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
@@ -74,7 +74,23 @@ public class DriverLocationService {
         return nearestDrivers;
     }
 
+    public boolean tryReserve(Integer driverId, String rideId){
+        Boolean success = redisTemplate.opsForValue().setIfAbsent(busyKey(driverId),rideId, Duration.ofMinutes(10));
+        return Boolean.TRUE.equals(success);
+    }
+
+    public void release(Integer driverId){
+        redisTemplate.delete(busyKey(driverId));
+    }
+
     private String aliveKey(Integer id){
         return "driver:" + id + ":alive";
     }
+
+    private String busyKey(Integer id){
+        return "driver:" + id + ":busy";
+    }
+
+
+
 }

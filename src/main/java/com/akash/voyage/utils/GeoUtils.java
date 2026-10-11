@@ -1,5 +1,9 @@
 package com.akash.voyage.utils;
 
+import com.akash.voyage.service.DriverLocationService;
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
 public class GeoUtils {
     public static double Radius = 6371;
 

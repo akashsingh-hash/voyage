@@ -1,7 +1,7 @@
 package com.akash.voyage.controller;
 
 import com.akash.voyage.model.Location;
-import com.akash.voyage.model.NearestDriverResponse;
+import com.akash.voyage.dto.NearestDriverResponse;
 import com.akash.voyage.service.DriverLocationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.geo.Point;
@@ -39,5 +39,7 @@ public class DriverController {
         List<NearestDriverResponse> nearbyDrivers = driverLocationService.findNearby(lat, lon, radiusKm);
         return ResponseEntity.status(200).body(nearbyDrivers);
     }
+
+
 
 }
