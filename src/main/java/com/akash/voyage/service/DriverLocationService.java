@@ -25,7 +25,7 @@ public class DriverLocationService {
     public void saveLocation(Integer id, double latitude, double longitude) {
         Point point = new Point(longitude, latitude); // longitude first
         redisTemplate.opsForGeo().add(KEY, point, id.toString());
-        redisTemplate.opsForValue().set(aliveKey(id),"1",java.time.Duration.ofSeconds(30));
+        redisTemplate.opsForValue().set(aliveKey(id),"1",java.time.Duration.ofMinutes(2));
     }
 
     // Get Location
@@ -75,7 +75,7 @@ public class DriverLocationService {
     }
 
     public boolean tryReserve(Integer driverId, String rideId){
-        Boolean success = redisTemplate.opsForValue().setIfAbsent(busyKey(driverId),rideId, Duration.ofMinutes(10));
+        Boolean success = redisTemplate.opsForValue().setIfAbsent(busyKey(driverId),rideId, Duration.ofMinutes(5));
         return Boolean.TRUE.equals(success);
     }
 
