@@ -1,5 +1,6 @@
 package com.akash.voyage.model;
 
+import com.akash.voyage.enums.RideStatus;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -14,6 +15,6 @@ public class Ride {
     private Integer driverId; // null until matched
     private Double pickupLatitude;
     private Double pickupLongitude;
-    private String status;
+    private RideStatus status;
 }
 

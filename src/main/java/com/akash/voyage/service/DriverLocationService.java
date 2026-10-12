@@ -1,9 +1,11 @@
 package com.akash.voyage.service;
 
 import com.akash.voyage.dto.NearestDriverResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.geo.*;
 import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -12,14 +14,12 @@ import java.util.Collections;
 import java.util.List;
 
 @Service
+@RequiredArgsConstructor
 public class DriverLocationService {
 
     private final StringRedisTemplate redisTemplate;
     private static final String KEY = "drivers";
 
-    public DriverLocationService(StringRedisTemplate redisTemplate) {
-        this.redisTemplate = redisTemplate;
-    }
 
     // Save driver location
     public void saveLocation(Integer id, double latitude, double longitude) {
@@ -31,10 +31,10 @@ public class DriverLocationService {
     // Get Location
     public Point getLocation(Integer id) {
         List<Point> points = redisTemplate.opsForGeo().position(KEY, id.toString());
-        if(points.isEmpty() || points.get(0) == null){
+        if(points.isEmpty() || points.getFirst() == null){
             return null;
         }
-        return points.get(0);
+        return points.getFirst();
     }
 
     // Find nearby drivers
@@ -79,8 +79,12 @@ public class DriverLocationService {
         return Boolean.TRUE.equals(success);
     }
 
-    public void release(Integer driverId){
-        redisTemplate.delete(busyKey(driverId));
+    public boolean release(Integer driverId,String rideId){
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setScriptText("if redis.call('Get',KEYS[1]) == ARGV[1] then return redis.call('DEL',KEYS[1]) else return 0 end");
+        script.setResultType(Long.class);
+        Long result = redisTemplate.execute(script,List.of(busyKey(driverId)),rideId);
+        return result != null && result == 1L;
     }
 
     private String aliveKey(Integer id){
@@ -90,7 +94,5 @@ public class DriverLocationService {
     private String busyKey(Integer id){
         return "driver:" + id + ":busy";
     }
-
-
 
 }

@@ -1,6 +1,5 @@
 package com.akash.voyage.utils;
 
-import com.akash.voyage.service.DriverLocationService;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor

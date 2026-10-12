@@ -1,13 +1,14 @@
 package com.akash.voyage.controller;
 
 import com.akash.voyage.dto.RideRequest;
+import com.akash.voyage.enums.RideStatus;
 import com.akash.voyage.model.Ride;
 import com.akash.voyage.service.RideService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
+
 
 @RestController
 @RequestMapping("/rides")
@@ -31,12 +32,15 @@ public class RideController {
         return ResponseEntity.ok(ride);
     }
 
+    @PostMapping("/{id}/complete")
+    public ResponseEntity<Ride> completeRide(@PathVariable String id) {
+        return ResponseEntity.ok(rideService.completeRide(id));
+    }
+
+
     public boolean isValid(RideRequest request){
-        if (request.getLatitude() == null || request.getLongitude() == null
-                || request.getLatitude() < -85.05 || request.getLatitude() > 85.05
-                || request.getLongitude() < -180 || request.getLongitude() > 180) {
-            return false;
-        }
-        return true;
+        return request.getLatitude() != null && request.getLongitude() != null
+                && !(request.getLatitude() < -85.05) && !(request.getLatitude() > 85.05)
+                && request.getLongitude() >= -180 && request.getLongitude() <= 180;
     }
 }

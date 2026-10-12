@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.*;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 public class RideConcurrencyTest {
@@ -115,7 +115,7 @@ public class RideConcurrencyTest {
     }
 
     @Test
-    void onlyOneThreadWithDifferentRideIdShouldReservceDriver() throws Exception{
+    void onlyOneThreadWithDifferentRideIdShouldReserveDriver() throws Exception{
         int threads = 100;
 
         ExecutorService executor = Executors.newFixedThreadPool(threads);
@@ -143,8 +143,8 @@ public class RideConcurrencyTest {
             for(Future<Ride> f : results){
 
                 Ride ride = f.get();
-                if (String.valueOf(RideStatus.MATCHED).equals(ride.getStatus())) matched++;
-                if (String.valueOf(RideStatus.NO_DRIVER_FOUND).equals(ride.getStatus())) noDriver++;
+                if (RideStatus.MATCHED == ride.getStatus()) matched++;
+                if (RideStatus.NO_DRIVER_FOUND == ride.getStatus()) noDriver++;
 
             }
             System.out.println("Matched rides: " + matched);
@@ -155,6 +155,22 @@ public class RideConcurrencyTest {
         } finally {
             executor.shutdown();
         }
+    }
+
+    @Test
+    void testSafeRelease(){
+        // Arrange driver9001 busy with ride-A
+        redisTemplate.opsForValue().set("driver:9001:busy","ride-A",600,TimeUnit.SECONDS);
+
+        // Act + Assert
+        assertFalse(driverLocationService.release(9001,"ride-B")); // wrong ride, key not deleted
+        assertEquals("ride-A",redisTemplate.opsForValue().get("driver:9001:busy"));
+
+        assertTrue(driverLocationService.release(9001,"ride-A")); // correct ride, key deleted
+        assertNull(redisTemplate.opsForValue().get("driver:9001:busy"));
+
+        assertFalse(driverLocationService.release(9001,"ride-A")); // Repeat call
+
     }
 
 

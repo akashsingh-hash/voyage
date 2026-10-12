@@ -30,16 +30,13 @@ public class DriverController {
         if(p == null) return ResponseEntity.notFound().build();
         Location location = new Location(p.getY(),p.getX());
         return ResponseEntity.ok(location);
-
     }
 
     @GetMapping("/nearby")
     public ResponseEntity<List<NearestDriverResponse>> getNearestDrivers(@RequestParam Double lat, @RequestParam Double lon, @RequestParam Double radiusKm){
-        if(radiusKm <= 0 || lat < -85.05 || lat > 85.05 || lon < -180 || lon > 180) return ResponseEntity.status(400).body(Collections.EMPTY_LIST);
+        if(radiusKm <= 0 || lat < -85.05 || lat > 85.05 || lon < -180 || lon > 180) return ResponseEntity.status(400).body(null);
         List<NearestDriverResponse> nearbyDrivers = driverLocationService.findNearby(lat, lon, radiusKm);
         return ResponseEntity.status(200).body(nearbyDrivers);
     }
-
-
 
 }
