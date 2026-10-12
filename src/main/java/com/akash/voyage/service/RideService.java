@@ -8,9 +8,8 @@ import com.akash.voyage.exception.RideNotFoundException;
 import com.akash.voyage.model.Ride;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.ResponseStatus;
 
 import java.util.List;
 import java.util.UUID;
@@ -20,6 +19,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 @Slf4j
 public class RideService {
+
+    private final KafkaTemplate<String,String> kafkaTemplate;
 
     private final DriverLocationService driverLocationService;
     private final ConcurrentHashMap<String, Ride> rides = new ConcurrentHashMap<>();
@@ -55,6 +56,11 @@ public class RideService {
 
         // save rider in memory
         rides.put(rideId,ride);
+
+        // publish to kafka
+        System.out.println("Sending to Kafka: " + ride.getId());
+        kafkaTemplate.send("ride.requested",ride.getId(),ride.getId());
+
         return ride;
     }
 
@@ -77,6 +83,7 @@ public class RideService {
 
         return ride;
     }
+
 
 
 
