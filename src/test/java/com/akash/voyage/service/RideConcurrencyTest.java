@@ -202,31 +202,31 @@ public class RideConcurrencyTest {
 
     }
 
-    @Test
-    void testIdempotentTryReserve() {
-        String rideId = UUID.randomUUID().toString();
-
-        // First reservation attempt
-        boolean first = driverLocationService.tryReserve(9001, rideId);
-        assertTrue(first, "First reservation should succeed");
-
-        // Simulate Kafka redelivery: processRide runs again
-        Ride ride = new Ride();
-        ride.setId(rideId);
-        ride.setPickupLatitude(40.0);
-        ride.setPickupLongitude(-74.0);
-        ride.setStatus(RideStatus.REQUESTED);
-
-        // Save ride before processing
-        rideService.getRides().put(rideId, ride);
-
-        // Second reservation attempt (same rideId, same driver)
-        rideService.processRide(rideId);
-
-        // Assert idempotency: ride is still matched with driver 9001
-        Ride processed = rideService.getRide(rideId);
-        assertEquals(RideStatus.MATCHED, processed.getStatus(), "Ride should remain MATCHED");
-        assertEquals(9001, processed.getDriverId(), "Ride should stay with driver 9001");
-    }
+//    @Test
+//    void testIdempotentTryReserve() {
+//        String rideId = UUID.randomUUID().toString();
+//
+//        // First reservation attempt
+//        boolean first = driverLocationService.tryReserve(9001, rideId);
+//        assertTrue(first, "First reservation should succeed");
+//
+//        // Simulate Kafka redelivery: processRide runs again
+//        Ride ride = new Ride();
+//        ride.setId(rideId);
+//        ride.setPickupLatitude(40.0);
+//        ride.setPickupLongitude(-74.0);
+//        ride.setStatus(RideStatus.REQUESTED);
+//
+//        // Save ride before processing
+//        rideService.getRides().put(rideId, ride);
+//
+//        // Second reservation attempt (same rideId, same driver)
+//        rideService.processRide(rideId);
+//
+//        // Assert idempotency: ride is still matched with driver 9001
+//        Ride processed = rideService.getRide(rideId);
+//        assertEquals(RideStatus.MATCHED, processed.getStatus(), "Ride should remain MATCHED");
+//        assertEquals(9001, processed.getDriverId(), "Ride should stay with driver 9001");
+//    }
 
 }

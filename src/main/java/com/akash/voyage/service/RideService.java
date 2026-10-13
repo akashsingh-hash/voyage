@@ -6,7 +6,7 @@ import com.akash.voyage.enums.RideStatus;
 import com.akash.voyage.exception.InvalidRideStateException;
 import com.akash.voyage.exception.RideNotFoundException;
 import com.akash.voyage.model.Ride;
-import lombok.Getter;
+import com.akash.voyage.repository.RideRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -22,11 +23,11 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class RideService {
 
+    private final RideRepository rideRepository;
+
     private final KafkaTemplate<String,String> kafkaTemplate;
 
     private final DriverLocationService driverLocationService;
-    @Getter
-    private final ConcurrentHashMap<String, Ride> rides = new ConcurrentHashMap<>();
 
     private final ConcurrentHashMap<String, SseEmitter> emitterConcurrentHashMap = new ConcurrentHashMap<>();
 
@@ -39,8 +40,8 @@ public class RideService {
         ride.setStatus(RideStatus.REQUESTED);
 
         // save rider in memory
-        rides.put(rideId,ride);
-
+//        rides.put(rideId,ride);
+        rideRepository.save(ride);
         // publish to kafka
         log.info("Publishing ride {} to Kafka for processing",ride.getId());
         kafkaTemplate.send("ride.requested",ride.getId(),ride.getId())
@@ -57,8 +58,9 @@ public class RideService {
     }
 
     public Ride completeRide(String rideId) {
-        Ride ride = rides.get(rideId);
-        if (ride == null) throw new RideNotFoundException(rideId);
+//        Ride ride = rides.get(rideId);
+        Ride ride = rideRepository.findById(rideId)
+                .orElseThrow(() -> new RideNotFoundException(rideId));
 
         if (ride.getStatus() != RideStatus.MATCHED) {
             throw new InvalidRideStateException(rideId, ride.getStatus());
@@ -66,7 +68,7 @@ public class RideService {
 
         // Mark completed first -> IT's MATCHED -> COMPLETED
         ride.setStatus(RideStatus.COMPLETED);
-
+        rideRepository.save(ride);
         // Try to release driver safely
         boolean released = driverLocationService.release(ride.getDriverId(), ride.getId());
         if (!released) {
@@ -77,11 +79,7 @@ public class RideService {
     }
 
     public void processRide(String rideId) {
-        Ride ride = rides.get(rideId);
-        if(ride == null){
-            log.warn("Ride with {} id not present.",rideId);
-            return;
-        }
+        Ride ride = rideRepository.findById(rideId).orElseThrow(() -> new RideNotFoundException(rideId));
 
         if(ride.getStatus() != RideStatus.REQUESTED){
             log.warn("Ride status is not REQUESTED");
@@ -102,12 +100,21 @@ public class RideService {
             }
         }
         if(matchedDriver != null){
-            ride.setDriverId(matchedDriver);
-            ride.setStatus(RideStatus.MATCHED);
-            log.info("Ride {} matched with driver {}",rideId,matchedDriver);
+            int updated = rideRepository.updateStatus(rideId, RideStatus.REQUESTED, RideStatus.MATCHED);
+            if (updated == 1) {
+                // Only one thread wins the update
+                ride.setDriverId(matchedDriver);
+                rideRepository.save(ride);
+                log.info("Ride {} matched with driver {}", rideId, matchedDriver);
+                notifyAndClose(rideId, ride);
+            } else {
+                // Another thread already updated this ride
+                log.warn("Ride {} already updated by another thread", rideId);
+            }
         }
         else{
             ride.setStatus(RideStatus.NO_DRIVER_FOUND);
+            rideRepository.save(ride);
             log.info("Ride {} could not find any driver",rideId);
         }
 
@@ -116,10 +123,8 @@ public class RideService {
 
 
     public SseEmitter registerEmitter(String rideId) {
-        Ride ride = rides.get(rideId);
-        if(ride == null){
-            throw new RideNotFoundException(rideId);
-        }
+        Ride ride = rideRepository.findById(rideId).orElseThrow(() -> new RideNotFoundException(rideId));
+
         SseEmitter emitter = new SseEmitter(30_000L);
 
         emitter.onCompletion(() -> emitterConcurrentHashMap.remove(rideId,emitter));
@@ -151,7 +156,7 @@ public class RideService {
     }
 
     public Ride getRide(String id){
-        return rides.get(id);
+        return rideRepository.findById(id).orElseThrow(() -> new RideNotFoundException(id));
     }
 
 }

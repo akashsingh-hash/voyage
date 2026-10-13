@@ -1,6 +1,18 @@
 spring:
   application:
     name: voyage
+  datasource:
+    url: jdbc:postgresql://localhost:5433/voyage
+    username: voyage
+    password: voyage123
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
   data:
     redis:
       host: localhost
