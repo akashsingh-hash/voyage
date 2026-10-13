@@ -1,25 +1,73 @@
-HELP.md
+# =========================================================================
+# Voyage - .gitignore
+# =========================================================================
+
+# Compiled Java class files
+*.class
+
+# Log files
+*.log
+logs/
+*.log.*
+
+# BlueJ files
+*.ctxt
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Virtual Machine crash logs
+hs_err_pid*
+replay_pid*
+
+# Maven
 target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 
-### STS ###
+# Spring & Documentation
+HELP.md
+
+# =========================================================================
+# IDEs and Editors
+# =========================================================================
+
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+.idea_modules/
+
+# Eclipse / STS
 .apt_generated
 .classpath
 .factorypath
 .project
-.settings
+.settings/
 .springBeans
-.sts4-cache
+.sts4-cache/
 
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-
-### NetBeans ###
+# NetBeans
 /nbproject/private/
 /nbbuild/
 /dist/
@@ -29,5 +77,52 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
-### VS Code ###
+# Visual Studio Code
 .vscode/
+
+# JetBrains Fleet
+.fleet/
+
+# =========================================================================
+# Operating System Files
+# =========================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# =========================================================================
+# Infrastructure / Local Services / Environment
+# =========================================================================
+
+# Redis local dumps
+dump.rdb
+*.aof
+
+# Kafka local logs
+kafka-logs/
+zookeeper/
+
+# Local Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+*.local

@@ -76,7 +76,14 @@ public class DriverLocationService {
 
     public boolean tryReserve(Integer driverId, String rideId){
         Boolean success = redisTemplate.opsForValue().setIfAbsent(busyKey(driverId),rideId, Duration.ofMinutes(5));
-        return Boolean.TRUE.equals(success);
+        if(Boolean.TRUE.equals(success)){
+            return true;
+        }
+        else{
+            // idempotency check : is the driver already reserved for the same rideId ?
+            String current = redisTemplate.opsForValue().get(busyKey(driverId));
+            return rideId.equals(current);
+        }
     }
 
     public boolean release(Integer driverId,String rideId){

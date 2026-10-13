@@ -12,9 +12,9 @@ import lombok.Setter;
 @NoArgsConstructor
 public class Ride {
     private String id;
-    private Integer driverId; // null until matched
+    private volatile Integer driverId; // null until matched
     private Double pickupLatitude;
     private Double pickupLongitude;
-    private RideStatus status;
+    private volatile RideStatus status;
 }
 

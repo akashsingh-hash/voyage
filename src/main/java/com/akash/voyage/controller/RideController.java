@@ -1,13 +1,12 @@
 package com.akash.voyage.controller;
 
 import com.akash.voyage.dto.RideRequest;
-import com.akash.voyage.enums.RideStatus;
 import com.akash.voyage.model.Ride;
 import com.akash.voyage.service.RideService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 
 @RestController
@@ -22,7 +21,7 @@ public class RideController {
         if(!isValid(request)) return ResponseEntity.status(400).body(null);
         Ride ride = rideService.createRide(request);
         // Process the ride request
-        return ResponseEntity.ok(ride);
+        return ResponseEntity.status(202).body(ride);
     }
 
     @GetMapping("/{id}")
@@ -37,8 +36,13 @@ public class RideController {
         return ResponseEntity.ok(rideService.completeRide(id));
     }
 
+    @GetMapping("/{id}/events")
+    public SseEmitter streamRideEvents(@PathVariable String id){
+        return rideService.registerEmitter(id);
+    }
 
-    public boolean isValid(RideRequest request){
+
+    private boolean isValid(RideRequest request){
         return request.getLatitude() != null && request.getLongitude() != null
                 && !(request.getLatitude() < -85.05) && !(request.getLatitude() > 85.05)
                 && request.getLongitude() >= -180 && request.getLongitude() <= 180;
