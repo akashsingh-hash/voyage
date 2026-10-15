@@ -76,6 +76,7 @@ public class DriverLocationService {
 
     public boolean tryReserve(Integer driverId, String rideId){
         Boolean success = redisTemplate.opsForValue().setIfAbsent(busyKey(driverId),rideId, Duration.ofMinutes(5));
+        String key = busyKey(driverId);
         if(Boolean.TRUE.equals(success)){
             return true;
         }

@@ -1,14 +1,14 @@
 package com.akash.voyage.component;
 
-import com.akash.voyage.enums.RideStatus;
-import com.akash.voyage.model.Ride;
 import com.akash.voyage.service.RideService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class RideRequestedConsumer {
 
     private final RideService rideService;
@@ -18,15 +18,10 @@ public class RideRequestedConsumer {
         rideService.processRide(rideId);
     }
 
-    @KafkaListener(topics = "ride.requested-dlt")
+    @KafkaListener(topics = "ride.requested-dlt",groupId = "ride-dlt-handler")
     public void handleFailedRide(String rideId){
-        Ride ride = rideService.getRide(rideId);
-        if(ride != null){
-            ride.setStatus(RideStatus.FAILED);
-            rideService.notifyAndClose(rideId,ride);
-        }
+        log.warn("DLT received ride ID: {}", rideId);
+        rideService.markRideFailed(rideId);
     }
-
-
 
 }

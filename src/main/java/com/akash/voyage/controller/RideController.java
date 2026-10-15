@@ -41,6 +41,11 @@ public class RideController {
         return rideService.registerEmitter(id);
     }
 
+    @PostMapping("/{id}/retry")
+    public ResponseEntity<Ride> retryRide(@PathVariable String id){
+        return ResponseEntity.accepted().body(rideService.recoverFailedRide(id));
+    }
+
 
     private boolean isValid(RideRequest request){
         return request.getLatitude() != null && request.getLongitude() != null

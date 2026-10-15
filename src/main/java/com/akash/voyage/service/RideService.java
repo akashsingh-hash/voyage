@@ -1,5 +1,7 @@
 package com.akash.voyage.service;
 
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import com.akash.voyage.dto.NearestDriverResponse;
 import com.akash.voyage.dto.RideRequest;
 import com.akash.voyage.enums.RideStatus;
@@ -11,10 +13,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -40,7 +42,6 @@ public class RideService {
         ride.setStatus(RideStatus.REQUESTED);
 
         // save rider in memory
-//        rides.put(rideId,ride);
         rideRepository.save(ride);
         // publish to kafka
         log.info("Publishing ride {} to Kafka for processing",ride.getId());
@@ -78,6 +79,7 @@ public class RideService {
         return ride;
     }
 
+    @Transactional
     public void processRide(String rideId) {
         Ride ride = rideRepository.findById(rideId).orElseThrow(() -> new RideNotFoundException(rideId));
 
@@ -102,13 +104,11 @@ public class RideService {
         if(matchedDriver != null){
             int updated = rideRepository.updateStatus(rideId, RideStatus.REQUESTED, RideStatus.MATCHED);
             if (updated == 1) {
-                // Only one thread wins the update
                 ride.setDriverId(matchedDriver);
+                ride.setStatus(RideStatus.MATCHED);
                 rideRepository.save(ride);
                 log.info("Ride {} matched with driver {}", rideId, matchedDriver);
-                notifyAndClose(rideId, ride);
             } else {
-                // Another thread already updated this ride
                 log.warn("Ride {} already updated by another thread", rideId);
             }
         }
@@ -154,9 +154,50 @@ public class RideService {
             }
         }
     }
+    @Transactional
+    public void markRideFailed(String rideId){
+        Ride ride = rideRepository.findById(rideId).orElseThrow(() -> new RideNotFoundException(rideId));
+        if(ride.getStatus() == RideStatus.REQUESTED){
+            ride.setStatus(RideStatus.FAILED);
+            rideRepository.save(ride);
+            log.warn("Ride {} marked as FAILED",rideId);
+        }
+    }
 
     public Ride getRide(String id){
         return rideRepository.findById(id).orElseThrow(() -> new RideNotFoundException(id));
+    }
+
+    @Transactional
+    public Ride recoverFailedRide(String rideId){
+        int updated = rideRepository.recoverFailedRide(rideId,RideStatus.FAILED,RideStatus.REQUESTED);
+
+        if(updated == 0){
+            Ride ride = rideRepository.findById(rideId).orElseThrow(() -> new RideNotFoundException(rideId));
+            throw new InvalidRideStateException(rideId,ride.getStatus());
+        }
+
+        Ride ride = rideRepository.findById(rideId).orElseThrow(() -> new RideNotFoundException(rideId));
+
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit(){
+                        kafkaTemplate.send("ride.requested",
+                                rideId,rideId)
+                                .whenComplete((result, ex) -> {
+                                    if(ex != null){
+                                        log.error("Failed to send ride {} to Kafka", rideId,ex);
+                                        // optionally mark Ride As Failed
+                                        ride.setStatus(RideStatus.FAILED);
+                                        notifyAndClose(rideId,ride);
+                                    }
+                                });
+                    }
+                }
+        );
+        log.info("Ride {} reset to REQUESTED for recovery", rideId);
+        return ride;
     }
 
 }

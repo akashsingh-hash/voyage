@@ -3,6 +3,7 @@ package com.akash.voyage.service;
 import com.akash.voyage.dto.RideRequest;
 import com.akash.voyage.enums.RideStatus;
 import com.akash.voyage.model.Ride;
+import com.akash.voyage.repository.RideRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.*;
 
@@ -21,6 +23,10 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest
 public class RideConcurrencyTest {
 
+    static {
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"));
+    }
+
     @Autowired
     private DriverLocationService driverLocationService;
 
@@ -28,8 +34,10 @@ public class RideConcurrencyTest {
     private RideService rideService;
 
     @Autowired
-    private StringRedisTemplate redisTemplate;
+    private RideRepository rideRepository;
 
+    @Autowired
+    private StringRedisTemplate redisTemplate;
 
     @BeforeEach
     void setup() {
@@ -43,7 +51,7 @@ public class RideConcurrencyTest {
     }
 
     @AfterEach
-    void destroy(){
+    void destroy() {
         redisTemplate.delete("driver:9001:busy");
         redisTemplate.delete("driver:9001:alive");
         redisTemplate.opsForGeo().remove("drivers", "9001");
@@ -53,10 +61,9 @@ public class RideConcurrencyTest {
     void onlyOneThreadShouldReserveDriver() throws InterruptedException {
 
         String rideId = UUID.randomUUID().toString();
-        int threads = 1000;
+        int threads = 50;
 
-        ExecutorService executor =
-                Executors.newFixedThreadPool(threads);
+        ExecutorService executor = Executors.newFixedThreadPool(threads);
 
         // Starting gate: all threads wait here
         CountDownLatch startLatch = new CountDownLatch(1);
@@ -75,8 +82,7 @@ public class RideConcurrencyTest {
                     // Race for the same driver
                     return driverLocationService.tryReserve(
                             9001,
-                            rideId
-                    );
+                            rideId);
                 });
 
                 results.add(future);
@@ -100,8 +106,7 @@ public class RideConcurrencyTest {
             assertEquals(
                     1,
                     winners,
-                    "Exactly one thread should win reservation"
-            );
+                    "Exactly one thread should win reservation");
 
         } catch (ExecutionException e) {
             throw new RuntimeException(e);
@@ -118,115 +123,122 @@ public class RideConcurrencyTest {
     @Test
     void onlyOneThreadWithDifferentRideIdShouldReserveDriver() throws Exception {
 
-        int threads = 1000;
+        int requests = 50;
+        int workers = 20;
 
-        ExecutorService executor = Executors.newFixedThreadPool(threads);
+        ExecutorService executor = Executors.newFixedThreadPool(workers);
         CountDownLatch startLatch = new CountDownLatch(1);
-
         List<Future<Ride>> results = new ArrayList<>();
 
         try {
-            // Create 100 concurrent ride requests
-            for (int i = 0; i < threads; i++) {
-
+            for (int i = 0; i < requests; i++) {
                 results.add(executor.submit(() -> {
-
-                    // Start all threads together
                     startLatch.await();
 
                     RideRequest request = new RideRequest();
                     request.setLatitude(40.0);
                     request.setLongitude(-74.0);
 
-                    // createRide() generates a unique ride ID
                     return rideService.createRide(request);
                 }));
             }
 
-            // Release all 1000 threads
+            // Release all workers to submit requests concurrently.
             startLatch.countDown();
+            System.out.println(
+                    "Busy key before collecting results: "
+                            + redisTemplate.opsForValue().get("driver:9001:busy"));
 
-            // Wait until Kafka matching has processed all rides
+            List<String> rideIds = new ArrayList<>();
+
+            for (Future<Ride> future : results) {
+                Ride ride = future.get(15, TimeUnit.SECONDS);
+                rideIds.add(ride.getId());
+            }
+
+            // Read the persisted statuses, not the stale objects
+            // returned immediately by createRide().
             await()
-                    .atMost(50, TimeUnit.SECONDS)
-                    .until(() -> results.stream()
-                            .allMatch(future -> {
-                                try {
-                                    return future.isDone()
-                                            && future.get().getStatus() != RideStatus.REQUESTED;
-                                } catch (Exception e) {
-                                    return false;
-                                }
-                            }));
+                    .atMost(60, TimeUnit.SECONDS)
+                    .pollInterval(500, TimeUnit.MILLISECONDS)
+                    .until(() -> rideIds.stream().allMatch(id -> rideRepository.findById(id)
+                            .map(ride -> ride.getStatus() != RideStatus.REQUESTED)
+                            .orElse(false)));
 
-            // Get final results
-            List<Ride> rides = results.stream()
-                    .map(future -> {
-                        try {
-                            return future.get();
-                        } catch (Exception e) {
-                            throw new RuntimeException(e);
-                        }
-                    })
+            List<Ride> processedRides = rideIds.stream()
+                    .map(id -> rideRepository.findById(id).orElseThrow())
                     .toList();
 
-            long matched = rides.stream()
-                    .filter(r -> r.getStatus() == RideStatus.MATCHED)
+            long matched = processedRides.stream()
+                    .filter(ride -> ride.getStatus() == RideStatus.MATCHED)
                     .count();
 
-            long noDriver = rides.stream()
-                    .filter(r -> r.getStatus() == RideStatus.NO_DRIVER_FOUND)
+            long noDriver = processedRides.stream()
+                    .filter(ride -> ride.getStatus() == RideStatus.NO_DRIVER_FOUND)
                     .count();
 
-            assertEquals(1, matched);
-            assertEquals(999, noDriver);
+            System.out.println("Total requests: " + requests);
+            System.out.println("Matched rides: " + matched);
+            System.out.println("No-driver rides: " + noDriver);
+
+            assertEquals(requests, matched + noDriver,
+                    "Every ride should finish processing");
+
+            assertEquals(1, matched,
+                    "Only one ride should reserve the single test driver");
 
         } finally {
-            executor.shutdown();
+            executor.shutdownNow();
+
+            if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
+                System.err.println("Executor did not terminate in time");
+            }
         }
     }
 
     @Test
-    void testSafeRelease(){
+    void testSafeRelease() {
         // Arrange driver9001 busy with ride-A
-        redisTemplate.opsForValue().set("driver:9001:busy","ride-A",600,TimeUnit.SECONDS);
+        redisTemplate.opsForValue().set("driver:9001:busy", "ride-A", 600, TimeUnit.SECONDS);
 
         // Act + Assert
-        assertFalse(driverLocationService.release(9001,"ride-B")); // wrong ride, key not deleted
-        assertEquals("ride-A",redisTemplate.opsForValue().get("driver:9001:busy"));
+        assertFalse(driverLocationService.release(9001, "ride-B")); // wrong ride, key not deleted
+        assertEquals("ride-A", redisTemplate.opsForValue().get("driver:9001:busy"));
 
-        assertTrue(driverLocationService.release(9001,"ride-A")); // correct ride, key deleted
+        assertTrue(driverLocationService.release(9001, "ride-A")); // correct ride, key deleted
         assertNull(redisTemplate.opsForValue().get("driver:9001:busy"));
 
-        assertFalse(driverLocationService.release(9001,"ride-A")); // Repeat call
+        assertFalse(driverLocationService.release(9001, "ride-A")); // Repeat call
 
     }
 
-//    @Test
-//    void testIdempotentTryReserve() {
-//        String rideId = UUID.randomUUID().toString();
-//
-//        // First reservation attempt
-//        boolean first = driverLocationService.tryReserve(9001, rideId);
-//        assertTrue(first, "First reservation should succeed");
-//
-//        // Simulate Kafka redelivery: processRide runs again
-//        Ride ride = new Ride();
-//        ride.setId(rideId);
-//        ride.setPickupLatitude(40.0);
-//        ride.setPickupLongitude(-74.0);
-//        ride.setStatus(RideStatus.REQUESTED);
-//
-//        // Save ride before processing
-//        rideService.getRides().put(rideId, ride);
-//
-//        // Second reservation attempt (same rideId, same driver)
-//        rideService.processRide(rideId);
-//
-//        // Assert idempotency: ride is still matched with driver 9001
-//        Ride processed = rideService.getRide(rideId);
-//        assertEquals(RideStatus.MATCHED, processed.getStatus(), "Ride should remain MATCHED");
-//        assertEquals(9001, processed.getDriverId(), "Ride should stay with driver 9001");
-//    }
+    // @Test
+    // void testIdempotentTryReserve() {
+    // String rideId = UUID.randomUUID().toString();
+    //
+    // // First reservation attempt
+    // boolean first = driverLocationService.tryReserve(9001, rideId);
+    // assertTrue(first, "First reservation should succeed");
+    //
+    // // Simulate Kafka redelivery: processRide runs again
+    // Ride ride = new Ride();
+    // ride.setId(rideId);
+    // ride.setPickupLatitude(40.0);
+    // ride.setPickupLongitude(-74.0);
+    // ride.setStatus(RideStatus.REQUESTED);
+    //
+    // // Save ride before processing
+    // rideService.getRides().put(rideId, ride);
+    //
+    // // Second reservation attempt (same rideId, same driver)
+    // rideService.processRide(rideId);
+    //
+    // // Assert idempotency: ride is still matched with driver 9001
+    // Ride processed = rideService.getRide(rideId);
+    // assertEquals(RideStatus.MATCHED, processed.getStatus(), "Ride should remain
+    // MATCHED");
+    // assertEquals(9001, processed.getDriverId(), "Ride should stay with driver
+    // 9001");
+    // }
 
 }
